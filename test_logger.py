@@ -1,13 +1,43 @@
 from flask import Flask, request, jsonify
+import json
+import os
+import re
+from datetime import datetime
+from dateutil import parser  # Make sure to install: pip install python-dateutil
 
 app = Flask(__name__)
-logged_call_ids = set()
+LOGGED_IDS_FILE = "logged_call_ids.json"
 
-# Simulated Google Sheet logger
+# ✅ Load existing logged call IDs
+if os.path.exists(LOGGED_IDS_FILE):
+    with open(LOGGED_IDS_FILE, "r") as f:
+        logged_call_ids = set(json.load(f))
+else:
+    logged_call_ids = set()
+
+# ✅ Save updated call IDs
+def save_logged_ids():
+    with open(LOGGED_IDS_FILE, "w") as f:
+        json.dump(list(logged_call_ids), f)
+
+# ✅ Replace this with your actual Google Sheet logging logic
 def log_to_sheet(log_data):
-    print("📝 Logging to Google Sheet (final):")
-    for key, value in log_data.items():
-        print(f"   {key}: {value}")
+    print("📝 Logging to Google Sheet (final):", log_data)
+    row = [
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        log_data.get("call_id", "NA"),
+        log_data.get("phone_number", ""),
+        log_data.get("customer_name", ""),
+        log_data.get("room_name", ""),
+        log_data.get("check_in_date", ""),
+        log_data.get("check_out_date", ""),
+        log_data.get("number_of_guests", ""),
+        log_data.get("call_outcome", ""),
+        log_data.get("call_summary", "")
+    ]
+    print("➡️ Row to insert:", row)
+    # 👉 Insert into Google Sheets here
+    # sheet.append_row(row)
 
 @app.route("/webhook", methods=["GET", "POST"])
 def webhook():
@@ -20,11 +50,9 @@ def webhook():
             print("👉 Incoming POST data:", data)
 
             call = data.get("call", {})
-            variables = call.get("variables", {})
             call_id = call.get("call_id", None)
             call_status = call.get("call_status", "NA").lower()
 
-            # 🚫 If call not ended, skip
             if call_status not in ["completed", "ended", "finished"]:
                 print(f"⏸️ Skipping log: call not completed yet (status = {call_status})")
                 return jsonify({"message": "Call not completed yet. Skipping log."}), 200
@@ -36,20 +64,66 @@ def webhook():
                 print(f"⚠️ Already logged: call_id {call_id}")
                 return jsonify({"message": "⏭️ Already logged"}), 200
 
+            transcript = call.get("transcript", "").lower()
+            print("📋 Transcript:", transcript)
+
+            # Default values
+            customer_name = "NA"
+            room_name = "NA"
+            check_in_date = "NA"
+            check_out_date = "NA"
+            number_of_guests = "NA"
+
+            # ✅ Extract customer name
+            name_match = re.search(r"my name is ([a-zA-Z\s]+)", transcript)
+            customer_name = name_match.group(1).title().strip() if name_match else "NA"
+
+            # ✅ Extract room name
+            room_types = ["executive room", "deluxe room", "family suite", "studio room", "classic room"]
+            room_name = next((room.title() for room in room_types if room in transcript), "NA")
+
+            # ✅ Extract check-in date
+            check_in_match = re.search(r"check[-\s]?in date is ([\w\s\d/-]+)", transcript)
+            if check_in_match:
+                try:
+                    check_in_date = str(parser.parse(check_in_match.group(1)).date())
+                except:
+                    check_in_date = check_in_match.group(1).strip()
+
+            # ✅ Extract check-out date
+            check_out_match = re.search(r"check[-\s]?out date is ([\w\s\d/-]+)", transcript)
+            if check_out_match:
+                try:
+                    check_out_date = str(parser.parse(check_out_match.group(1)).date())
+                except:
+                    check_out_date = check_out_match.group(1).strip()
+
+            # ✅ Extract number of guests
+            guest_match = re.search(r"(\d+)\s+(guests|guest)", transcript)
+            number_of_guests = guest_match.group(1) if guest_match else "NA"
+
+            # ✅ Prepare log data
             log_data = {
+                "call_id": call_id,
                 "call_time": call.get("call_start_time", "NA"),
                 "phone_number": call.get("phone_number", "NA"),
                 "call_outcome": call_status,
-                "customer_name": call.get("agent_name", "NA"),
-                "room_name": variables.get("room_name", "NA"),
-                "check_in_date": variables.get("check_in_date", "NA"),
-                "check_out_date": variables.get("check_out_date", "NA"),
-                "number_of_guests": variables.get("number_of_guests", "NA"),
-                "call_summary": call.get("call_analysis", {}).get("call_summary", "NA")
+                "customer_name": customer_name,
+                "room_name": room_name,
+                "check_in_date": check_in_date,
+                "check_out_date": check_out_date,
+                "number_of_guests": number_of_guests,
+                "call_summary": call.get("call_analysis", {}).get("call_summary", "NA"),
+                "raw_transcript": transcript  # Optional, for debugging/log auditing
             }
 
+            # ✅ Log the data
             log_to_sheet(log_data)
+
+            # Save the call_id
             logged_call_ids.add(call_id)
+            save_logged_ids()
+
             return jsonify({"message": "✅ Final data logged"}), 200
 
         except Exception as e:
