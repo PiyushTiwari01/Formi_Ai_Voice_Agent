@@ -1,3 +1,4 @@
+# google_sheets_logger.py
 from datetime import datetime
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -6,27 +7,25 @@ def log_to_sheet(log_data):
     print("📝 Logging to Google Sheet (final):")
     row = [
         datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        log_data.get("phone_number", ""),
-        log_data.get("customer_name", ""),
-        log_data.get("room_name", ""),
-        log_data.get("check_in_date", ""),
-        log_data.get("check_out_date", ""),
-        log_data.get("number_of_guests", ""),
-        log_data.get("call_outcome", ""),
-        log_data.get("call_summary", "")
+        log_data.get("call_id", "NA"),
+        log_data.get("phone_number", "NA"),
+        log_data.get("customer_name", "NA"),
+        log_data.get("room_name", "NA"),
+        log_data.get("check_in_date", "NA"),
+        log_data.get("check_out_date", "NA"),
+        log_data.get("number_of_guests", "NA"),
+        log_data.get("call_outcome", "NA"),
+        log_data.get("call_summary", "NA")
     ]
     try:
         scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
         creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
         client = gspread.authorize(creds)
-        sheet = client.open("MyInformation").sheet1  # Replace with your sheet name if different
+        sheet = client.open("MyInformation").sheet1  # ✅ Must match actual sheet title
         sheet.append_row(row)
         print("✅ Data written to sheet:", row)
     except Exception as e:
         print("❌ Sheet write error:", e)
-
-
-
 
 
 
